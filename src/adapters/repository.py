@@ -1,7 +1,8 @@
 import abc
-from models import Worker
-from models import Customer
-import psycopg2
+import hashlib
+from src.models import Worker
+from src.models import Customer
+from src.models import Account
 
 
 class AbstractRepository(abc.ABC):
@@ -34,6 +35,12 @@ class ShelterRepository:
 # delete_worker(id_obj)
 class WorkerRepository(AbstractRepository):
     def delete(self, id_obj):
+        """
+        Функция по удалению рабочего по его информации
+
+        :param id_obj:
+        :return: Ничего
+        """
         cursor = self.connection.cursor()
         worker = self.get(id_obj)
 
@@ -46,6 +53,12 @@ class WorkerRepository(AbstractRepository):
         cursor.close()
 
     def get(self, id_obj):
+        """
+        Функция по получению рабочего по его id
+
+        :param id_obj:
+        :return: рабочего
+        """
         cursor = self.connection.cursor()
 
         sql = f'select full_name, login, pass, role, w.account_id from workers w ' \
@@ -67,11 +80,19 @@ class WorkerRepository(AbstractRepository):
         self.connection = connection
 
     def add(self, worker: Worker):
+        """
+        Функция по дабовлению в базу данных рабочего
+
+        :param worker:
+        :return: Ничего
+        """
+
         cursor = self.connection.cursor()
 
         cursor.execute(f'select role_id from roles where role = \'{worker.role}\'')
         role_id = cursor.fetchall()[0][0]
-        cursor.execute(f'INSERT INTO accounts(login, pass, role_id) VALUES (\'{worker.login}\', \'{worker.password}\','
+        password = hashlib.sha512(worker.password.encode()).hexdigest()
+        cursor.execute(f'INSERT INTO accounts(login, pass, role_id) VALUES (\'{worker.login}\', \'{password}\','
                        f' {role_id})')
 
         cursor.execute('select max(account_id) from accounts')
@@ -83,6 +104,11 @@ class WorkerRepository(AbstractRepository):
         cursor.close()
 
     def all(self):
+        """
+        Функция по выводу всех рабочих
+
+        :return: Список всех рабочих
+        """
         cursor = self.connection.cursor()
         cursor.execute('SELECT full_name, login, pass, role, a.account_id FROM workers w ' 
                        'join accounts a on a.account_id = w.account_id '
@@ -96,6 +122,13 @@ class WorkerRepository(AbstractRepository):
         return data
 
     def is_exists_worker(self, login: str, password: str):
+        """
+        Функция на просмотр существования рабочего по логину и поролю
+
+        :param login:
+        :param password:
+        :return: Выводит рабочего
+        """
         cursor = self.connection.cursor()
 
         sql = f'select full_name, login, pass, role from workers w ' \
@@ -118,6 +151,12 @@ class WorkerRepository(AbstractRepository):
 
 class CustomerRepository(AbstractRepository):
     def delete(self, id_obj):
+        """
+        Функция по удалению пользователя по его информации
+
+        :param id_obj:
+        :return: Ничего
+        """
         cursor = self.connection.cursor()
         customer = self.get(id_obj)
 
@@ -130,6 +169,13 @@ class CustomerRepository(AbstractRepository):
         cursor.close()
 
     def get(self, id_obj):
+        """
+        Функция по получунию информацию о пользователе по его id
+
+        :param id_obj:
+        :return: Пользователя
+        """
+
         cursor = self.connection.cursor()
 
         sql = f'select full_name, login, pass, role from customers c ' \
@@ -151,12 +197,20 @@ class CustomerRepository(AbstractRepository):
         self.connection = connection
 
     def add(self, customer: Customer):
+        """
+        Функция по дабовлению в базу данных пользователя
+
+        :param customer:
+        :return: Ничего
+        """
+
         cursor = self.connection.cursor()
 
         cursor.execute(f'select role_id from roles where role = \'{customer.role}\'')
         role_id = cursor.fetchall()[0][0]
+        password = hashlib.sha512(customer.password.encode()).hexdigest()
         cursor.execute(f'INSERT INTO accounts(login, pass, role_id) VALUES (\'{customer.login}\', '
-                       f'\'{customer.password}\', \'{role_id}\')')
+                       f'\'{password}\', \'{role_id}\')')
 
         cursor.execute('select max(account_id) from accounts')
         account_id = cursor.fetchall()[0][0]
@@ -167,6 +221,12 @@ class CustomerRepository(AbstractRepository):
         cursor.close()
 
     def all(self):
+        """
+        Функция по выводу всех пользователей
+
+        :return: Список всех пользователей
+        """
+
         cursor = self.connection.cursor()
         cursor.execute('SELECT full_name, login, pass, role, a.account_id FROM customers c '
                        'join accounts a on a.account_id = c.account_id '
@@ -180,10 +240,17 @@ class CustomerRepository(AbstractRepository):
         return data
 
     def is_exists_customer(self, login: str, password: str):
+        """
+        Функция на просмотр существования полтьзователя по логину и поролю
+
+        :param login:
+        :param password:
+        :return: Выводит пользователя
+        """
         cursor = self.connection.cursor()
 
         sql = f'select full_name, login, pass, role from customers c ' \
-              f'join accounts a on c.account_id = a.account_id' \
+              f'join accounts a on c.account_id = a.account_id ' \
               f'join roles r on r.role_id = a.role_id ' \
               f'where a.login = %s and a.pass = %s;'
 
@@ -200,8 +267,30 @@ class CustomerRepository(AbstractRepository):
         return Customer(fio=i[0], login=i[1], password=i[2], role=i[3], account_id=i[4])
 
 
+class AccountRepository:
+    def __init__(self, connection):
+        self.connection = connection
 
+    def get_by_login_pass(self, login: str, password: str):
+        """
+        Функция для взятия аккаунта по логину и паролю.
 
+        :param login:
+        :param password:
+        :return если аккаунт не найден none иначе аккаунт:
+        """
+        cursor = self.connection.cursor()
 
+        sql = 'select account_id, login, pass, role from accounts a ' \
+              'join roles r on a.role_id = r.role_id ' \
+              'where login = %s and pass = %s'
 
+        password = hashlib.sha512(password.encode()).hexdigest()
+        cursor.execute(sql, (login, password))
+
+        data = cursor.fetchone()
+        cursor.close()
+        if data is not None:
+            return Account(login=data[1], password=data[2], role=data[3])
+        return None
 
